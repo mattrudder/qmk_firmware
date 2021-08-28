@@ -110,7 +110,7 @@ LED_TYPE g_ws2812_leds[WS2812_LED_TOTAL];
 #endif
 #endif
 
-#define BACKLIGHT_EFFECT_MAX 10
+#define BACKLIGHT_EFFECT_MAX 11
 
 backlight_config g_config = {
     .use_split_backspace = RGB_BACKLIGHT_USE_SPLIT_BACKSPACE,
@@ -2359,6 +2359,49 @@ void backlight_effect_cycle_radial2(void)
     }
 }
 
+// Fading fingerprint based on color1 with overrides to match layer colors
+// TODO: Consider moving this to the keymap so we can use more of the rest of the API
+static HS active_color[BACKLIGHT_LED_COUNT];
+void backlight_effect_user(void)
+{
+    srand(osalOsGetSystemTimeX());
+    for (int i = 0; i < BACKLIGHT_LED_COUNT; i++)
+    {
+        uint16_t hit_time = g_key_hit[i];
+
+        hit_time *= 13;
+        if (hit_time > 255)
+        {
+            hit_time = 255;
+        }
+        else if (hit_time < 20)
+        {
+            if ( IS_LAYER_ON(3) )
+            {
+                active_color[i] = g_config.layer_3_indicator.color;
+            }
+            else if ( IS_LAYER_ON(2) )
+            {
+                active_color[i] = g_config.layer_2_indicator.color;
+            }
+            else if ( IS_LAYER_ON(1) )
+            {
+                active_color[i] = g_config.layer_1_indicator.color;
+            }
+            else
+            {
+                active_color[i] = g_config.color_1;
+            }
+        }
+
+        uint8_t brightness = 255 - hit_time;
+        HS base_color = active_color[i];
+        HSV hsv = { .h = base_color.h, .s = base_color.s, .v = brightness };
+        RGB rgb = hsv_to_rgb(hsv);
+        backlight_set_color(i, rgb.r, rgb.g, rgb.b);
+  }
+}
+
 #if defined(RGB_BACKLIGHT_M6_B) || defined(RGB_BACKLIGHT_M10_C)
 void backlight_effect_custom_colors(void)
 {
@@ -2546,6 +2589,9 @@ static void gpt_backlight_timer_task(GPTDriver *gptp)
             break;
         case 10:
             backlight_effect_cycle_radial2();
+            break;
+        case 11:
+            backlight_effect_user();
             break;
         default:
             backlight_effect_all_off();
